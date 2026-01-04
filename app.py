@@ -128,6 +128,34 @@ def send_message():
         return jsonify({"status": "success"}), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+# 3. Create a Conversation (Chat Room)
+@app.route('/conversations', methods=['POST'])
+def create_conversation():
+    try:
+        data = request.json
+        # Expected: {"conversationId": "room_paris", "title": "Trip to Paris"}
+        if 'conversationId' not in data or 'title' not in data:
+            return jsonify({"error": "conversationId and title are required"}), 400
+        
+        # Save to 'conversations' collection
+        db.collection('conversations').document(data['conversationId']).set(data)
+        
+        return jsonify({"status": "created"}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# 4. Get All Conversations
+@app.route('/conversations', methods=['GET'])
+def get_conversations():
+    try:
+        docs = db.collection('conversations').stream()
+        results = []
+        for doc in docs:
+            results.append(doc.to_dict())
+        return jsonify(results), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # Required for Vercel
 if __name__ == '__main__':
