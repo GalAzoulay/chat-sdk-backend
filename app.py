@@ -63,39 +63,76 @@ def home():
 #         return jsonify({"error": str(e)}), 500
 
 # 1. GET Messages with PAGINATION and CONVERSATION ID
+# @app.route('/messages', methods=['GET'])
+# def get_messages():
+#     try:
+#         # Get query parameters
+#         conversation_id = request.args.get('conversationId')
+#         limit = int(request.args.get('limit', 20)) # Default to 20 messages
+#         last_timestamp = request.args.get('lastTimestamp') # For pagination (load older messages)
+
+#         if not conversation_id:
+#             return jsonify({"error": "conversationId is required"}), 400
+
+#         # Start Query: Filter by Conversation, Order by Newest First
+#         messages_ref = db.collection('messages') \
+#             .where('conversationId', '==', conversation_id) \
+#             .order_by('timestamp', direction=firestore.Query.DESCENDING) \
+#             .limit(limit)
+
+#         # Pagination Logic: If we have a timestamp, start AFTER it (fetching older messages)
+#         if last_timestamp:
+#             messages_ref = messages_ref.start_after({'timestamp': int(last_timestamp)})
+
+#         docs = messages_ref.stream()
+        
+#         all_messages = []
+#         for doc in docs:
+#             msg_data = doc.to_dict()
+#             msg_data['id'] = doc.id
+#             all_messages.append(msg_data)
+            
+#         # We return NEWEST first. The Android App will reverse this to show standard chat (Old -> New).
+#         return jsonify(all_messages), 200
+
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
+
+
+# 1. GET Messages (With Timestamp Fix)
 @app.route('/messages', methods=['GET'])
 def get_messages():
     try:
-        # Get query parameters
         conversation_id = request.args.get('conversationId')
-        limit = int(request.args.get('limit', 20)) # Default to 20 messages
-        last_timestamp = request.args.get('lastTimestamp') # For pagination (load older messages)
+        limit = int(request.args.get('limit', 20))
+        last_timestamp = request.args.get('lastTimestamp')
 
         if not conversation_id:
             return jsonify({"error": "conversationId is required"}), 400
 
-        # Start Query: Filter by Conversation, Order by Newest First
         messages_ref = db.collection('messages') \
             .where('conversationId', '==', conversation_id) \
             .order_by('timestamp', direction=firestore.Query.DESCENDING) \
             .limit(limit)
 
-        # Pagination Logic: If we have a timestamp, start AFTER it (fetching older messages)
         if last_timestamp:
             messages_ref = messages_ref.start_after({'timestamp': int(last_timestamp)})
 
         docs = messages_ref.stream()
-        
         all_messages = []
         for doc in docs:
             msg_data = doc.to_dict()
             msg_data['id'] = doc.id
+            
+            # --- THE FIX: Convert Timestamp to Milliseconds ---
+            if 'timestamp' in msg_data and msg_data['timestamp']:
+                msg_data['timestamp'] = int(msg_data['timestamp'].timestamp() * 1000)
+                
             all_messages.append(msg_data)
             
-        # We return NEWEST first. The Android App will reverse this to show standard chat (Old -> New).
         return jsonify(all_messages), 200
-
     except Exception as e:
+        print(f"Error: {e}") 
         return jsonify({"error": str(e)}), 500
 
 # 2. Send Message (POST)
