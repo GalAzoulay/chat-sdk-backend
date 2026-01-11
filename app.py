@@ -231,31 +231,64 @@ def create_conversation():
 #     except Exception as e:
 #         return jsonify({"error": str(e)}), 500
 
-# 4. Get Conversations (Smart Filter)
+# # 4. Get Conversations (Smart Filter)
+# @app.route('/conversations', methods=['GET'])
+# def get_conversations():
+#     try:
+#         user_id = request.args.get('userId')
+        
+#         if user_id:
+#             # SMART MODE: Only get chats where THIS user is a participant
+#             # Note: This requires 'participants' to be an array in Firestore
+#             docs = db.collection('conversations') \
+#                 .where('participants', 'array_contains', user_id) \
+#                 .order_by('lastUpdated', direction=firestore.Query.DESCENDING) \
+#                 .stream()
+#         else:
+#             # DEBUG MODE: Get everything (if no user specified)
+#             docs = db.collection('conversations').stream()
+
+#         results = []
+#         for doc in docs:
+#             data = doc.to_dict()
+#             data['id'] = doc.id # Ensure ID is included
+#             results.append(data)
+            
+#         return jsonify(results), 200
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
+
+# 4. GET Conversations (With Timestamp Fix)
 @app.route('/conversations', methods=['GET'])
 def get_conversations():
     try:
         user_id = request.args.get('userId')
         
         if user_id:
-            # SMART MODE: Only get chats where THIS user is a participant
-            # Note: This requires 'participants' to be an array in Firestore
+            # Get chats for specific user
             docs = db.collection('conversations') \
                 .where('participants', 'array_contains', user_id) \
                 .order_by('lastUpdated', direction=firestore.Query.DESCENDING) \
                 .stream()
         else:
-            # DEBUG MODE: Get everything (if no user specified)
+            # Fallback
             docs = db.collection('conversations').stream()
 
         results = []
         for doc in docs:
             data = doc.to_dict()
-            data['id'] = doc.id # Ensure ID is included
+            data['id'] = doc.id
+            
+            # --- THE FIX: Convert Timestamp to Milliseconds ---
+            if 'lastUpdated' in data and data['lastUpdated']:
+                # Convert to milliseconds for Android
+                data['lastUpdated'] = int(data['lastUpdated'].timestamp() * 1000)
+                
             results.append(data)
             
         return jsonify(results), 200
     except Exception as e:
+        print(f"Error: {e}") # Print error to Vercel logs
         return jsonify({"error": str(e)}), 500
 
 # Required for Vercel
