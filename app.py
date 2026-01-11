@@ -151,35 +151,70 @@ def send_message():
 #     except Exception as e:
 #         return jsonify({"error": str(e)}), 500
 
+# @app.route('/conversations', methods=['POST'])
+# def create_conversation():
+#     try:
+#         data = request.json
+#         # TripWise needs: participants (list), lastMessage (string), lastUpdated (timestamp)
+        
+#         # 1. Validate
+#         if 'participants' not in data:
+#             return jsonify({"error": "participants list is required"}), 400
+
+#         # 2. Generate Conversation ID (if not provided)
+#         # TripWise Logic: Sort user IDs to make a unique room ID (userA_userB)
+#         participants = sorted(data['participants'])
+#         conversation_id = data.get('conversationId', f"{participants[0]}_{participants[1]}")
+        
+#         # 3. Prepare Data
+#         new_chat = {
+#             "id": conversation_id,
+#             "participants": participants,
+#             "lastMessage": data.get("lastMessage", ""),
+#             "lastUpdated": firestore.SERVER_TIMESTAMP,
+#             # We store metadata (names/pics) here to avoid extra queries later
+#             "metadata": data.get("metadata", {}) 
+#         }
+
+#         # 4. Save to 'conversations' collection
+#         db.collection('conversations').document(conversation_id).set(new_chat, merge=True)
+        
+#         return jsonify({"status": "success", "conversationId": conversation_id}), 201
+
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
+
+
+# 3. CREATE Conversation (THE FIX IS HERE)
 @app.route('/conversations', methods=['POST'])
 def create_conversation():
     try:
         data = request.json
-        # TripWise needs: participants (list), lastMessage (string), lastUpdated (timestamp)
         
-        # 1. Validate
-        if 'participants' not in data:
-            return jsonify({"error": "participants list is required"}), 400
+        # --- FIX 1: Ensure we use the ID provided by the App ---
+        conversation_id = data.get('id')
+        if not conversation_id:
+            return jsonify({"error": "id is required"}), 400
 
-        # 2. Generate Conversation ID (if not provided)
-        # TripWise Logic: Sort user IDs to make a unique room ID (userA_userB)
-        participants = sorted(data['participants'])
-        conversation_id = data.get('conversationId', f"{participants[0]}_{participants[1]}")
-        
-        # 3. Prepare Data
+        # --- FIX 2: Ensure metadata exists for the title ---
+        metadata = data.get('metadata', {})
+        # Foolproof: If the app sent 'title' outside metadata, move it inside.
+        if 'title' in data and 'title' not in metadata:
+            metadata['title'] = data['title']
+
         new_chat = {
             "id": conversation_id,
-            "participants": participants,
-            "lastMessage": data.get("lastMessage", ""),
+            # Use .get() to avoid errors if participants are missing
+            "participants": data.get('participants', []), 
+            "lastMessage": data.get("lastMessage", "New Chat"),
             "lastUpdated": firestore.SERVER_TIMESTAMP,
-            # We store metadata (names/pics) here to avoid extra queries later
-            "metadata": data.get("metadata", {}) 
+            "metadata": metadata # Title is safely inside here now
         }
 
-        # 4. Save to 'conversations' collection
+        # Crucial: Use .document(id).set() to use YOUR id, not a random one.
         db.collection('conversations').document(conversation_id).set(new_chat, merge=True)
         
-        return jsonify({"status": "success", "conversationId": conversation_id}), 201
+        return jsonify({"status": "success", "id": conversation_id}), 201
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
