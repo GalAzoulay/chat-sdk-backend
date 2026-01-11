@@ -99,60 +99,126 @@ def get_messages():
         return jsonify({"error": str(e)}), 500
 
 # 2. Send Message (POST)
+# 2. Update Send Message to include conversationId
 # @app.route('/messages', methods=['POST'])
 # def send_message():
 #     try:
 #         data = request.json
-#         # Expected JSON: {"sender": "Name", "content": "Hello", "timestamp": 12345}
-        
-#         if not data or 'content' not in data:
-#             return jsonify({"error": "Invalid data"}), 400
+#         # Expected: sender, content, timestamp, conversationId
+#         if 'conversationId' not in data:
+#             return jsonify({"error": "conversationId is required"}), 400
 
-#         # Add to Firestore (Let Firestore generate the ID)
 #         db.collection('messages').add(data)
-        
-#         return jsonify({"status": "success", "message": "Message saved"}), 201
+#         return jsonify({"status": "success"}), 201
 #     except Exception as e:
 #         return jsonify({"error": str(e)}), 500
-
-# 2. Update Send Message to include conversationId
+    
+# Update 'send_message' to also update the Conversation's 'lastMessage'
 @app.route('/messages', methods=['POST'])
 def send_message():
     try:
         data = request.json
-        # Expected: sender, content, timestamp, conversationId
-        if 'conversationId' not in data:
-            return jsonify({"error": "conversationId is required"}), 400
-
+        # Expected: conversationId, senderId, text
+        
+        # 1. Save Message
+        data['timestamp'] = firestore.SERVER_TIMESTAMP
         db.collection('messages').add(data)
-        return jsonify({"status": "success"}), 201
+        
+        # 2. Update Conversation (Simulating TripWise 'updateConversation' logic)
+        convo_ref = db.collection('conversations').document(data['conversationId'])
+        convo_ref.update({
+            "lastMessage": data['text'],
+            "lastUpdated": firestore.SERVER_TIMESTAMP
+        })
+        
+        return jsonify({"status": "sent"}), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     
 # 3. Create a Conversation (Chat Room)
+# @app.route('/conversations', methods=['POST'])
+# def create_conversation():
+#     try:
+#         data = request.json
+#         # Expected: {"conversationId": "room_paris", "title": "Trip to Paris"}
+#         if 'conversationId' not in data or 'title' not in data:
+#             return jsonify({"error": "conversationId and title are required"}), 400
+        
+#         # Save to 'conversations' collection
+#         db.collection('conversations').document(data['conversationId']).set(data)
+        
+#         return jsonify({"status": "created"}), 201
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
+
 @app.route('/conversations', methods=['POST'])
 def create_conversation():
     try:
         data = request.json
-        # Expected: {"conversationId": "room_paris", "title": "Trip to Paris"}
-        if 'conversationId' not in data or 'title' not in data:
-            return jsonify({"error": "conversationId and title are required"}), 400
+        # TripWise needs: participants (list), lastMessage (string), lastUpdated (timestamp)
         
-        # Save to 'conversations' collection
-        db.collection('conversations').document(data['conversationId']).set(data)
+        # 1. Validate
+        if 'participants' not in data:
+            return jsonify({"error": "participants list is required"}), 400
+
+        # 2. Generate Conversation ID (if not provided)
+        # TripWise Logic: Sort user IDs to make a unique room ID (userA_userB)
+        participants = sorted(data['participants'])
+        conversation_id = data.get('conversationId', f"{participants[0]}_{participants[1]}")
         
-        return jsonify({"status": "created"}), 201
+        # 3. Prepare Data
+        new_chat = {
+            "id": conversation_id,
+            "participants": participants,
+            "lastMessage": data.get("lastMessage", ""),
+            "lastUpdated": firestore.SERVER_TIMESTAMP,
+            # We store metadata (names/pics) here to avoid extra queries later
+            "metadata": data.get("metadata", {}) 
+        }
+
+        # 4. Save to 'conversations' collection
+        db.collection('conversations').document(conversation_id).set(new_chat, merge=True)
+        
+        return jsonify({"status": "success", "conversationId": conversation_id}), 201
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 # 4. Get All Conversations
+# @app.route('/conversations', methods=['GET'])
+# def get_conversations():
+#     try:
+#         docs = db.collection('conversations').stream()
+#         results = []
+#         for doc in docs:
+#             results.append(doc.to_dict())
+#         return jsonify(results), 200
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
+
+# 4. Get Conversations (Smart Filter)
 @app.route('/conversations', methods=['GET'])
 def get_conversations():
     try:
-        docs = db.collection('conversations').stream()
+        user_id = request.args.get('userId')
+        
+        if user_id:
+            # SMART MODE: Only get chats where THIS user is a participant
+            # Note: This requires 'participants' to be an array in Firestore
+            docs = db.collection('conversations') \
+                .where('participants', 'array_contains', user_id) \
+                .order_by('lastUpdated', direction=firestore.Query.DESCENDING) \
+                .stream()
+        else:
+            # DEBUG MODE: Get everything (if no user specified)
+            docs = db.collection('conversations').stream()
+
         results = []
         for doc in docs:
-            results.append(doc.to_dict())
+            data = doc.to_dict()
+            data['id'] = doc.id # Ensure ID is included
+            results.append(data)
+            
         return jsonify(results), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
