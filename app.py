@@ -44,59 +44,10 @@ def home():
     return "Chat API is running! 🚀"
 
 # 1. Get Messages (GET)
-# @app.route('/messages', methods=['GET'])
-# def get_messages():
-#     try:
-#         # Get 'messages' collection, order by time
-#         messages_ref = db.collection('messages').order_by('timestamp', direction=firestore.Query.ASCENDING)
-#         docs = messages_ref.stream()
-        
-#         all_messages = []
-#         for doc in docs:
-#             msg_data = doc.to_dict()
-#             # Add the ID so we can identify messages if needed
-#             msg_data['id'] = doc.id 
-#             all_messages.append(msg_data)
-            
-#         return jsonify(all_messages), 200
-#     except Exception as e:
-#         return jsonify({"error": str(e)}), 500
+
 
 # 1. GET Messages with PAGINATION and CONVERSATION ID
-# @app.route('/messages', methods=['GET'])
-# def get_messages():
-#     try:
-#         # Get query parameters
-#         conversation_id = request.args.get('conversationId')
-#         limit = int(request.args.get('limit', 20)) # Default to 20 messages
-#         last_timestamp = request.args.get('lastTimestamp') # For pagination (load older messages)
 
-#         if not conversation_id:
-#             return jsonify({"error": "conversationId is required"}), 400
-
-#         # Start Query: Filter by Conversation, Order by Newest First
-#         messages_ref = db.collection('messages') \
-#             .where('conversationId', '==', conversation_id) \
-#             .order_by('timestamp', direction=firestore.Query.DESCENDING) \
-#             .limit(limit)
-
-#         # Pagination Logic: If we have a timestamp, start AFTER it (fetching older messages)
-#         if last_timestamp:
-#             messages_ref = messages_ref.start_after({'timestamp': int(last_timestamp)})
-
-#         docs = messages_ref.stream()
-        
-#         all_messages = []
-#         for doc in docs:
-#             msg_data = doc.to_dict()
-#             msg_data['id'] = doc.id
-#             all_messages.append(msg_data)
-            
-#         # We return NEWEST first. The Android App will reverse this to show standard chat (Old -> New).
-#         return jsonify(all_messages), 200
-
-#     except Exception as e:
-#         return jsonify({"error": str(e)}), 500
 
 
 # 1. GET Messages (With Timestamp Fix)
@@ -137,118 +88,120 @@ def get_messages():
 
 # 2. Send Message (POST)
 # 2. Update Send Message to include conversationId
+# 2. Update 'send_message' to also update the Conversation's 'lastMessage'
 # @app.route('/messages', methods=['POST'])
 # def send_message():
 #     try:
 #         data = request.json
-#         # Expected: sender, content, timestamp, conversationId
-#         if 'conversationId' not in data:
-#             return jsonify({"error": "conversationId is required"}), 400
-
+#         # Expected: conversationId, senderId, text
+        
+#         # 1. Save Message
+#         data['timestamp'] = firestore.SERVER_TIMESTAMP
 #         db.collection('messages').add(data)
-#         return jsonify({"status": "success"}), 201
+        
+#         # 2. Update Conversation (Simulating TripWise 'updateConversation' logic)
+#         convo_ref = db.collection('conversations').document(data['conversationId'])
+#         convo_ref.update({
+#             "lastMessage": data['text'],
+#             "lastUpdated": firestore.SERVER_TIMESTAMP
+#         })
+        
+#         return jsonify({"status": "sent"}), 201
 #     except Exception as e:
 #         return jsonify({"error": str(e)}), 500
     
-# Update 'send_message' to also update the Conversation's 'lastMessage'
+# new for pictures 20.1.26
+# 2. SEND Message
 @app.route('/messages', methods=['POST'])
 def send_message():
     try:
         data = request.json
-        # Expected: conversationId, senderId, text
         
         # 1. Save Message
         data['timestamp'] = firestore.SERVER_TIMESTAMP
         db.collection('messages').add(data)
         
-        # 2. Update Conversation (Simulating TripWise 'updateConversation' logic)
+        # 2. Determine Preview Text
+        display_message = data.get('text', '')
+        if data.get('type') == 'image':
+            display_message = "📷 Image" # Show this in the list instead of Base64 garbage
+
+        # 3. Update Conversation
         convo_ref = db.collection('conversations').document(data['conversationId'])
         convo_ref.update({
-            "lastMessage": data['text'],
+            "lastMessage": display_message,
             "lastUpdated": firestore.SERVER_TIMESTAMP
         })
         
         return jsonify({"status": "sent"}), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    
+
+
 # 3. Create a Conversation (Chat Room)
+# 3. CREATE Conversation (THE FIX IS HERE)
 # @app.route('/conversations', methods=['POST'])
 # def create_conversation():
 #     try:
 #         data = request.json
-#         # Expected: {"conversationId": "room_paris", "title": "Trip to Paris"}
-#         if 'conversationId' not in data or 'title' not in data:
-#             return jsonify({"error": "conversationId and title are required"}), 400
         
-#         # Save to 'conversations' collection
-#         db.collection('conversations').document(data['conversationId']).set(data)
-        
-#         return jsonify({"status": "created"}), 201
-#     except Exception as e:
-#         return jsonify({"error": str(e)}), 500
+#         # --- FIX 1: Ensure we use the ID provided by the App ---
+#         conversation_id = data.get('id')
+#         if not conversation_id:
+#             return jsonify({"error": "id is required"}), 400
 
-# @app.route('/conversations', methods=['POST'])
-# def create_conversation():
-#     try:
-#         data = request.json
-#         # TripWise needs: participants (list), lastMessage (string), lastUpdated (timestamp)
-        
-#         # 1. Validate
-#         if 'participants' not in data:
-#             return jsonify({"error": "participants list is required"}), 400
+#         # --- FIX 2: Ensure metadata exists for the title ---
+#         metadata = data.get('metadata', {})
+#         # Foolproof: If the app sent 'title' outside metadata, move it inside.
+#         if 'title' in data and 'title' not in metadata:
+#             metadata['title'] = data['title']
 
-#         # 2. Generate Conversation ID (if not provided)
-#         # TripWise Logic: Sort user IDs to make a unique room ID (userA_userB)
-#         participants = sorted(data['participants'])
-#         conversation_id = data.get('conversationId', f"{participants[0]}_{participants[1]}")
-        
-#         # 3. Prepare Data
 #         new_chat = {
 #             "id": conversation_id,
-#             "participants": participants,
-#             "lastMessage": data.get("lastMessage", ""),
+#             # Use .get() to avoid errors if participants are missing
+#             "participants": data.get('participants', []), 
+#             "lastMessage": data.get("lastMessage", "New Chat"),
 #             "lastUpdated": firestore.SERVER_TIMESTAMP,
-#             # We store metadata (names/pics) here to avoid extra queries later
-#             "metadata": data.get("metadata", {}) 
+#             "metadata": metadata # Title is safely inside here now
 #         }
 
-#         # 4. Save to 'conversations' collection
+#         # Crucial: Use .document(id).set() to use YOUR id, not a random one.
 #         db.collection('conversations').document(conversation_id).set(new_chat, merge=True)
         
-#         return jsonify({"status": "success", "conversationId": conversation_id}), 201
+#         return jsonify({"status": "success", "id": conversation_id}), 201
 
 #     except Exception as e:
 #         return jsonify({"error": str(e)}), 500
 
 
-# 3. CREATE Conversation (THE FIX IS HERE)
+# new for pictures 20.1.26
+# 3. CREATE Conversation
 @app.route('/conversations', methods=['POST'])
 def create_conversation():
     try:
         data = request.json
-        
-        # --- FIX 1: Ensure we use the ID provided by the App ---
+
         conversation_id = data.get('id')
         if not conversation_id:
             return jsonify({"error": "id is required"}), 400
 
-        # --- FIX 2: Ensure metadata exists for the title ---
         metadata = data.get('metadata', {})
         # Foolproof: If the app sent 'title' outside metadata, move it inside.
         if 'title' in data and 'title' not in metadata:
             metadata['title'] = data['title']
 
+        # NEW: Accept photoBase64
+        if 'photoBase64' in data and 'photoBase64' not in metadata:
+            metadata['photoBase64'] = data['photoBase64']
+
         new_chat = {
             "id": conversation_id,
-            # Use .get() to avoid errors if participants are missing
             "participants": data.get('participants', []), 
             "lastMessage": data.get("lastMessage", "New Chat"),
             "lastUpdated": firestore.SERVER_TIMESTAMP,
-            "metadata": metadata # Title is safely inside here now
+            "metadata": metadata
         }
 
-        # Crucial: Use .document(id).set() to use YOUR id, not a random one.
         db.collection('conversations').document(conversation_id).set(new_chat, merge=True)
         
         return jsonify({"status": "success", "id": conversation_id}), 201
@@ -256,45 +209,10 @@ def create_conversation():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+
 # 4. Get All Conversations
-# @app.route('/conversations', methods=['GET'])
-# def get_conversations():
-#     try:
-#         docs = db.collection('conversations').stream()
-#         results = []
-#         for doc in docs:
-#             results.append(doc.to_dict())
-#         return jsonify(results), 200
-#     except Exception as e:
-#         return jsonify({"error": str(e)}), 500
-
-# # 4. Get Conversations (Smart Filter)
-# @app.route('/conversations', methods=['GET'])
-# def get_conversations():
-#     try:
-#         user_id = request.args.get('userId')
-        
-#         if user_id:
-#             # SMART MODE: Only get chats where THIS user is a participant
-#             # Note: This requires 'participants' to be an array in Firestore
-#             docs = db.collection('conversations') \
-#                 .where('participants', 'array_contains', user_id) \
-#                 .order_by('lastUpdated', direction=firestore.Query.DESCENDING) \
-#                 .stream()
-#         else:
-#             # DEBUG MODE: Get everything (if no user specified)
-#             docs = db.collection('conversations').stream()
-
-#         results = []
-#         for doc in docs:
-#             data = doc.to_dict()
-#             data['id'] = doc.id # Ensure ID is included
-#             results.append(data)
-            
-#         return jsonify(results), 200
-#     except Exception as e:
-#         return jsonify({"error": str(e)}), 500
-
+# 4. Get Conversations (Smart Filter)
 # 4. GET Conversations (With Timestamp Fix)
 @app.route('/conversations', methods=['GET'])
 def get_conversations():
@@ -326,6 +244,44 @@ def get_conversations():
         return jsonify(results), 200
     except Exception as e:
         print(f"Error: {e}") # Print error to Vercel logs
+        return jsonify({"error": str(e)}), 500
+
+
+# new for pictures 20.1.26
+# 7. UPDATE Conversation (PATCH)
+@app.route('/conversations/<conversation_id>', methods=['PATCH'])
+def update_conversation(conversation_id):
+    try:
+        data = request.json
+        # We only update what is sent (Title or Photo)
+        updates = {}
+        
+        # 1. Handle Title Update
+        if 'title' in data:
+            # We store title in metadata.title
+            updates['metadata.title'] = data['title']
+
+        # 2. Handle Photo Update
+        if 'photoBase64' in data:
+            # Send null or empty string to delete the photo
+            photo = data['photoBase64']
+            if not photo:
+                updates['metadata.photoBase64'] = firestore.DELETE_FIELD
+            else:
+                updates['metadata.photoBase64'] = photo
+
+        if not updates:
+            return jsonify({"status": "no changes"}), 200
+
+        # 3. Apply Updates
+        # Update 'lastUpdated' so it bumps to the top of the list
+        updates['lastUpdated'] = firestore.SERVER_TIMESTAMP
+        
+        db.collection('conversations').document(conversation_id).update(updates)
+        
+        return jsonify({"status": "updated"}), 200
+
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 # Required for Vercel
