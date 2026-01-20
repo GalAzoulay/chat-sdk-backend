@@ -309,6 +309,30 @@ def get_conversations():
         print(f"Error: {e}") # Print error to Vercel logs
         return jsonify({"error": str(e)}), 500
 
+
+# 5. UPDATE Conversation Title (PATCH) (this is for convo info to edit title 20.1.26)
+@app.route('/conversations/<conversation_id>', methods=['PATCH'])
+def update_conversation_title(conversation_id):
+    try:
+        data = request.json
+        new_title = data.get('title')
+        
+        if not new_title:
+             return jsonify({"error": "title is required"}), 400
+
+        # Update specific field in Firestore
+        # We use dot notation 'metadata.title' to update nested field
+        db.collection('conversations').document(conversation_id).update({
+            "metadata.title": new_title,
+            "lastUpdated": firestore.SERVER_TIMESTAMP # Bump to top of list
+        })
+        
+        return jsonify({"status": "updated"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # new for pictures 20.1.26
 # 7. UPDATE Conversation (PATCH)
 # @app.route('/conversations/<conversation_id>', methods=['PATCH'])
