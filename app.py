@@ -140,39 +140,66 @@ def send_message():
 
 # 3. Create a Conversation (Chat Room)
 # 3. CREATE Conversation (THE FIX IS HERE)
+# @app.route('/conversations', methods=['POST'])
+# def create_conversation():
+#     try:
+#         data = request.json
+        
+#         # --- FIX 1: Ensure we use the ID provided by the App ---
+#         conversation_id = data.get('id')
+#         if not conversation_id:
+#             return jsonify({"error": "id is required"}), 400
+
+#         # --- FIX 2: Ensure metadata exists for the title ---
+#         metadata = data.get('metadata', {})
+#         # Foolproof: If the app sent 'title' outside metadata, move it inside.
+#         if 'title' in data and 'title' not in metadata:
+#             metadata['title'] = data['title']
+
+#         new_chat = {
+#             "id": conversation_id,
+#             # Use .get() to avoid errors if participants are missing
+#             "participants": data.get('participants', []), 
+#             "lastMessage": data.get("lastMessage", "New Chat"),
+#             "lastUpdated": firestore.SERVER_TIMESTAMP,
+#             "metadata": metadata # Title is safely inside here now
+#         }
+
+#         # Crucial: Use .document(id).set() to use YOUR id, not a random one.
+#         db.collection('conversations').document(conversation_id).set(new_chat, merge=True)
+        
+#         return jsonify({"status": "success", "id": conversation_id}), 201
+
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
+
+# 3. CREATE Conversation (updated for conversation information (created at) 20.1.26)
 @app.route('/conversations', methods=['POST'])
 def create_conversation():
     try:
         data = request.json
-        
-        # --- FIX 1: Ensure we use the ID provided by the App ---
         conversation_id = data.get('id')
         if not conversation_id:
             return jsonify({"error": "id is required"}), 400
 
-        # --- FIX 2: Ensure metadata exists for the title ---
         metadata = data.get('metadata', {})
-        # Foolproof: If the app sent 'title' outside metadata, move it inside.
         if 'title' in data and 'title' not in metadata:
             metadata['title'] = data['title']
 
         new_chat = {
             "id": conversation_id,
-            # Use .get() to avoid errors if participants are missing
             "participants": data.get('participants', []), 
             "lastMessage": data.get("lastMessage", "New Chat"),
             "lastUpdated": firestore.SERVER_TIMESTAMP,
-            "metadata": metadata # Title is safely inside here now
+            "createdAt": firestore.SERVER_TIMESTAMP,  # <--- NEW FIELD
+            "metadata": metadata
         }
 
-        # Crucial: Use .document(id).set() to use YOUR id, not a random one.
         db.collection('conversations').document(conversation_id).set(new_chat, merge=True)
-        
         return jsonify({"status": "success", "id": conversation_id}), 201
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 # new for pictures 20.1.26
 # 3. CREATE Conversation
@@ -214,6 +241,39 @@ def create_conversation():
 # 4. Get All Conversations
 # 4. Get Conversations (Smart Filter)
 # 4. GET Conversations (With Timestamp Fix)
+# @app.route('/conversations', methods=['GET'])
+# def get_conversations():
+#     try:
+#         user_id = request.args.get('userId')
+        
+#         if user_id:
+#             # Get chats for specific user
+#             docs = db.collection('conversations') \
+#                 .where('participants', 'array_contains', user_id) \
+#                 .order_by('lastUpdated', direction=firestore.Query.DESCENDING) \
+#                 .stream()
+#         else:
+#             # Fallback
+#             docs = db.collection('conversations').stream()
+
+#         results = []
+#         for doc in docs:
+#             data = doc.to_dict()
+#             data['id'] = doc.id
+            
+#             # --- THE FIX: Convert Timestamp to Milliseconds ---
+#             if 'lastUpdated' in data and data['lastUpdated']:
+#                 # Convert to milliseconds for Android
+#                 data['lastUpdated'] = int(data['lastUpdated'].timestamp() * 1000)
+                
+#             results.append(data)
+            
+#         return jsonify(results), 200
+#     except Exception as e:
+#         print(f"Error: {e}") # Print error to Vercel logs
+#         return jsonify({"error": str(e)}), 500
+
+# 4. GET Conversations (updated for conversation information (created at) 20.1.26)
 @app.route('/conversations', methods=['GET'])
 def get_conversations():
     try:
@@ -228,16 +288,19 @@ def get_conversations():
         else:
             # Fallback
             docs = db.collection('conversations').stream()
-
+        
         results = []
         for doc in docs:
             data = doc.to_dict()
             data['id'] = doc.id
             
-            # --- THE FIX: Convert Timestamp to Milliseconds ---
+            # Convert Timestamps to Milliseconds
             if 'lastUpdated' in data and data['lastUpdated']:
-                # Convert to milliseconds for Android
                 data['lastUpdated'] = int(data['lastUpdated'].timestamp() * 1000)
+            
+            # <--- NEW: Handle createdAt conversion
+            if 'createdAt' in data and data['createdAt']:
+                data['createdAt'] = int(data['createdAt'].timestamp() * 1000)
                 
             results.append(data)
             
@@ -245,7 +308,6 @@ def get_conversations():
     except Exception as e:
         print(f"Error: {e}") # Print error to Vercel logs
         return jsonify({"error": str(e)}), 500
-
 
 # new for pictures 20.1.26
 # 7. UPDATE Conversation (PATCH)
