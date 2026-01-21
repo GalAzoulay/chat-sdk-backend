@@ -348,6 +348,18 @@ def delete_conversation(conversation_id):
         return jsonify({"error": str(e)}), 500
 
 
+
+# 7. DELETE Message
+@app.route('/messages/<message_id>', methods=['DELETE'])
+def delete_message(message_id):
+    try:
+        # Physically delete the document
+        db.collection('messages').document(message_id).delete()
+        return jsonify({"status": "deleted"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # new for pictures 20.1.26
 # 7. UPDATE Conversation (PATCH)
 # @app.route('/conversations/<conversation_id>', methods=['PATCH'])
