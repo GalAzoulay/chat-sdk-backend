@@ -333,6 +333,21 @@ def update_conversation_title(conversation_id):
         return jsonify({"error": str(e)}), 500
 
 
+
+# 6. DELETE Conversation (new for deleting conversations 21.1.26)
+@app.route('/conversations/<conversation_id>', methods=['DELETE'])
+def delete_conversation(conversation_id):
+    try:
+        # Delete the conversation document
+        # (Messages become orphans, which is fine for now)
+        db.collection('conversations').document(conversation_id).delete()
+        
+        return jsonify({"status": "deleted"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # new for pictures 20.1.26
 # 7. UPDATE Conversation (PATCH)
 # @app.route('/conversations/<conversation_id>', methods=['PATCH'])
