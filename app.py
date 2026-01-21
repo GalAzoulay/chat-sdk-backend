@@ -97,7 +97,8 @@ def send_message():
         
         # 1. Save Message
         data['timestamp'] = firestore.SERVER_TIMESTAMP
-        db.collection('messages').add(data)
+        # db.collection('messages').add(data)
+        update_time, ref = db.collection('messages').add(data)
         
         # 2. Update Conversation (Simulating TripWise 'updateConversation' logic)
         convo_ref = db.collection('conversations').document(data['conversationId'])
@@ -106,7 +107,9 @@ def send_message():
             "lastUpdated": firestore.SERVER_TIMESTAMP
         })
         
-        return jsonify({"status": "sent"}), 201
+        # return jsonify({"status": "sent"}), 201
+        return jsonify({"status": "sent", "id": ref.id}), 201
+    
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     
