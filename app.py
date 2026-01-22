@@ -363,6 +363,27 @@ def delete_message(message_id):
         return jsonify({"error": str(e)}), 500
 
 
+
+# 8. EDIT Message (PATCH)
+@app.route('/messages/<message_id>', methods=['PATCH'])
+def edit_message(message_id):
+    try:
+        data = request.json
+        new_text = data.get('text')
+        
+        if not new_text:
+             return jsonify({"error": "text is required"}), 400
+
+        # Update the text field
+        db.collection('messages').document(message_id).update({
+            "text": new_text
+        })
+        
+        return jsonify({"status": "updated"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # new for pictures 20.1.26
 # 7. UPDATE Conversation (PATCH)
 # @app.route('/conversations/<conversation_id>', methods=['PATCH'])
