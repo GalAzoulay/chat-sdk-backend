@@ -89,30 +89,72 @@ def get_messages():
 # 2. Send Message (POST)
 # 2. Update Send Message to include conversationId
 # 2. Update 'send_message' to also update the Conversation's 'lastMessage'
+# @app.route('/messages', methods=['POST'])
+# def send_message():
+#     try:
+#         data = request.json
+#         # Expected: conversationId, senderId, text
+        
+#         # 1. Save Message
+#         data['timestamp'] = firestore.SERVER_TIMESTAMP
+#         # db.collection('messages').add(data)
+#         update_time, ref = db.collection('messages').add(data)
+        
+#         # 2. Update Conversation (Simulating TripWise 'updateConversation' logic)
+#         convo_ref = db.collection('conversations').document(data['conversationId'])
+#         convo_ref.update({
+#             "lastMessage": data['text'],
+#             "lastUpdated": firestore.SERVER_TIMESTAMP
+#         })
+        
+#         # return jsonify({"status": "sent"}), 201
+#         return jsonify({"status": "sent", "id": ref.id}), 201
+    
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
+
+
+
+# 2. Update 'send_message' to also update the Conversation's 'lastMessage'
 @app.route('/messages', methods=['POST'])
 def send_message():
     try:
         data = request.json
-        # Expected: conversationId, senderId, text
         
-        # 1. Save Message
-        data['timestamp'] = firestore.SERVER_TIMESTAMP
-        # db.collection('messages').add(data)
-        update_time, ref = db.collection('messages').add(data)
-        
-        # 2. Update Conversation (Simulating TripWise 'updateConversation' logic)
+        # Validate required fields
+        if not data or 'conversationId' not in data or 'senderId' not in data or 'text' not in data:
+            return jsonify({"error": "Missing required fields"}), 400
+
+        # Construct the Message Object
+        new_message = {
+            'conversationId': data['conversationId'],
+            'senderId': data['senderId'],
+            'text': data['text'],
+            'timestamp': firestore.SERVER_TIMESTAMP,
+            'status': 1, # Sent
+            
+            # Capture Reply Fields (Optional)
+            'replyToId': data.get('replyToId'),
+            'replyToName': data.get('replyToName'),
+            'replyToText': data.get('replyToText')
+        }
+
+        # Save to Firestore
+        update_time, ref = db.collection('messages').add(new_message)
+
+         # Update Conversation (Simulating TripWise 'updateConversation' logic)
         convo_ref = db.collection('conversations').document(data['conversationId'])
         convo_ref.update({
             "lastMessage": data['text'],
             "lastUpdated": firestore.SERVER_TIMESTAMP
         })
-        
-        # return jsonify({"status": "sent"}), 201
+
+        # Return the new ID
         return jsonify({"status": "sent", "id": ref.id}), 201
-    
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    
+  
 # new for pictures 20.1.26
 # 2. SEND Message
 # @app.route('/messages', methods=['POST'])
